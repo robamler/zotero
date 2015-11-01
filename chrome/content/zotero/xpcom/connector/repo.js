@@ -58,21 +58,13 @@ Zotero.Repo = new function() {
 	 * @param {Function} callback Callback to pass code when retreived
 	 */
 	this.getTranslatorCode = function(translatorID, callback) {
-		// try standalone
-		Zotero.Connector.callMethod("getTranslatorCode", {"translatorID":translatorID}, function(result) {
-			if(result) {
-				_haveCode(result, translatorID, Zotero.Repo.SOURCE_ZOTERO_STANDALONE, callback);
-				return;
+		Zotero.HTTP.doGet(
+			chrome.runtime.getURL("translators/" + translatorID),
+			function(xmlhttp) {
+				_haveCode(xmlhttp.status === 200 ? xmlhttp.responseText : false, translatorID,
+					Zotero.Repo.SOURCE_REPO, callback);
 			}
-			
-			// then try repo
-			Zotero.HTTP.doGet(ZOTERO_CONFIG.REPOSITORY_URL + "code/" + translatorID + "?version=" + Zotero.version,
-				function(xmlhttp) {
-					_haveCode(xmlhttp.status === 200 ? xmlhttp.responseText : false, translatorID,
-						Zotero.Repo.SOURCE_REPO, callback);
-				}
-			);
-		});
+		);
 	};
 	
 	/**
@@ -123,14 +115,17 @@ Zotero.Repo = new function() {
 	 *                                     contacted
 	 */
 	function _updateFromStandalone(tryRepoOnFailure, reset, callback) {
-		Zotero.Connector.callMethod("getTranslators", {}, function(result) {
-			if(!result && tryRepoOnFailure) {
-				_updateFromRepo(reset, callback);
-			} else {
-				_handleResponse(result, reset);
-				if(callback) callback(!!result);
+		Zotero.HTTP.doGet(chrome.runtime.getURL("translators/getTranslators"),
+			function(xmlhttp) {
+				if(xmlhttp.status === 200) {
+					var result = JSON.parse(xmlhttp.responseText);
+					_handleResponse(result, reset);
+					if(callback) callback(!!result);
+				} else {
+					if(callback) callback(false);
+				}
 			}
-		});
+		);
 	}
 	
 	/**
