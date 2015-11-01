@@ -275,7 +275,7 @@ Components.utils.import("resource://gre/modules/Services.jsm");
 		var appLocale = localeService.getApplicationLocale();
 		
 		_localizedStringBundle = stringBundleService.createBundle(
-			"chrome://zotero/locale/zotero.properties", appLocale);
+			"chrome://dontprint/locale/zotero.properties", appLocale);
 		
 		// Also load the brand as appName
 		var brandBundle = stringBundleService.createBundle(

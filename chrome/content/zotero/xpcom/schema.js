@@ -464,7 +464,7 @@ Zotero.Schema = new function(){
 			var deferred = Q.defer();
 			Components.utils.import("resource://gre/modules/AddonManager.jsm");
 			AddonManager.getAddonByID(
-				ZOTERO_CONFIG['GUID'],
+				'dontprint@robamler.github.com',
 				function(addon) {
 					var up = _updateBundledFilesCallback(
 						addon.getResourceURI().QueryInterface(Components.interfaces.nsIFileURL).file,

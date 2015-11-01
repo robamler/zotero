@@ -1,3 +1,11 @@
+/**
+ * This file is adapted from Zotero. Some parts that are of no
+ * use to Dontprint were left out. Dontprint loads this file
+ * only if Zotero is not installed. If Zotero is installed,
+ * Dontprint hooks directly into Zotero's internals.
+ */
+
+
 /*
     ***** BEGIN LICENSE BLOCK *****
     
@@ -40,16 +48,13 @@
 
 var Zotero_Browser = new function() {
 	this.init = init;
-	this.annotatePage = annotatePage;
-	this.toggleMode = toggleMode;
-	this.toggleCollapsed = toggleCollapsed;
 	this.chromeLoad = chromeLoad;
 	this.contentLoad = contentLoad;
 	this.itemUpdated = itemUpdated;
 	this.contentHide = contentHide;
 	this.tabClose = tabClose;
-	this.resize = resize;
 	this.updateStatus = updateStatus;
+	this.initialized = false;
 	
 	this.tabbrowser = null;
 	this.appcontent = null;
@@ -71,24 +76,6 @@ var Zotero_Browser = new function() {
 		"zotero://debug/"
 	];
 	
-	var tools = {
-		'zotero-annotate-tb-add':{
-			cursor:"pointer",
-			event:"click",
-			callback:function(e) { _add("annotation", e) }
-		},
-		'zotero-annotate-tb-highlight':{
-			cursor:"text",
-			event:"mouseup",
-			callback:function(e) { _add("highlight", e) }
-		},
-		'zotero-annotate-tb-unhighlight':{
-			cursor:"text",
-			event:"mouseup",
-			callback:function(e) { _add("unhighlight", e) }
-		}
-	};
-
 	//////////////////////////////////////////////////////////////////////////////
 	//
 	// Public Zotero_Browser methods
@@ -100,138 +87,11 @@ var Zotero_Browser = new function() {
 	 * Initialize some variables and prepare event listeners for when chrome is done loading
 	 */
 	function init() {
-		if (!window.hasOwnProperty("gBrowser")) {
+		if (this.initialized || !Zotero || !Zotero.initialized || !window.hasOwnProperty("gBrowser")) {
 			return;
 		}
-		
-		var zoteroInitDone;
-		if (!Zotero || !Zotero.initialized) {
-			// Zotero either failed to load or is reloading in Connector mode
-			// In case of the latter, listen for the 'zotero-loaded' event (once) and retry
-			var zoteroInitDone_deferred = Q.defer();
-			var obs = Components.classes["@mozilla.org/observer-service;1"]
-				.getService(Components.interfaces.nsIObserverService);
-			var observer = {
-				"observe":function() {
-					obs.removeObserver(observer, 'zotero-loaded')
-					zoteroInitDone_deferred.resolve();
-				}
-			};
-			obs.addObserver(observer, 'zotero-loaded', false);
-			
-			zoteroInitDone = zoteroInitDone_deferred.promise;
-		} else {
-			zoteroInitDone = Q();
-		}
-		
-		var chromeLoaded = Q.defer();
-		window.addEventListener("load", function(e) { chromeLoaded.resolve() }, false);
-		
-		// Wait for Zotero to init and chrome to load before proceeding
-		Q.all([
-			zoteroInitDone.then(function() {
-				ZoteroPane_Local.addReloadListener(reload);
-				reload();
-			}),
-			chromeLoaded.promise
-		])
-		.then(function() {
-			Zotero_Browser.chromeLoad()
-		})
-		.done();
-	}
-	
-	/**
-	 * Called when Zotero is reloaded
-	 */
-	function reload() {
-		// Handles the display of a div showing progress in scraping
-		Zotero_Browser.progress = new Zotero.ProgressWindow();
-	}
-	
-	/**
-	 * Saves from current page using translator (called when the capture icon is clicked)
-	 *
-	 * @param {String} [translator]
-	 * @param {Event} [event]
-	 */
-	this.scrapeThisPage = function (translator, event) {
-		// Perform translation
-		var tab = _getTabObject(Zotero_Browser.tabbrowser.selectedBrowser);
-		var page = tab.getPageObject();
-		if(page.translators && page.translators.length) {
-			page.translate.setTranslator(translator || page.translators[0]);
-			Zotero_Browser.performTranslation(page.translate);
-		}
-		else {
-			this.saveAsWebPage(
-				(event && event.shiftKey) ? !Zotero.Prefs.get('automaticSnapshots') : null
-			);
-		}
-	}
-	
-	// Keep in sync with cmd_zotero_newItemFromCurrentPage
-	this.saveAsWebPage = function (includeSnapshots) {
-		// DEBUG: Possible to just trigger command directly with event? Assigning it to the
-		// command property of the icon doesn't seem to work, and neither does goDoCommand()
-		// from chrome://global/content/globalOverlay.js. Getting the command by id and
-		// running doCommand() works but doesn't pass the event.
-		ZoteroPane.addItemFromPage('temporaryPDFHack', includeSnapshots);
-	}
-	
-	/*
-	 * flags a page for annotation
-	 */
-	function annotatePage(id, browser) {
-		if (browser) {
-			var tab = _getTabObject(browser);
-		}
-		else {
-			var tab = _getTabObject(this.tabbrowser.selectedBrowser);
-		}
-	}
-	
-	/*
-	 * toggles a tool on/off
-	 */
-	function toggleMode(toggleTool, ignoreOtherTools) {
-		// make sure other tools are turned off
-		if(!ignoreOtherTools) {
-			for(var tool in tools) {
-				if(tool != toggleTool && document.getElementById(tool).getAttribute("tool-active")) {
-					toggleMode(tool, true);
-				}
-			}
-		}
-		
-		// make sure annotation action is toggled
-		var tab = _getTabObject(Zotero_Browser.tabbrowser.selectedBrowser);
-		var page = tab.getPageObject();
-		if(page && page.annotations && page.annotations.clearAction) page.annotations.clearAction();
-		
-		if(!toggleTool) return;
-		
-		var body = Zotero_Browser.tabbrowser.selectedBrowser.contentDocument.getElementsByTagName("body")[0];
-		var addElement = document.getElementById(toggleTool);
-		
-		if(addElement.getAttribute("tool-active")) {
-			// turn off
-			body.style.cursor = "auto";
-			addElement.removeAttribute("tool-active");
-			Zotero_Browser.tabbrowser.selectedBrowser.removeEventListener(tools[toggleTool].event, tools[toggleTool].callback, true);
-		} else {
-			body.style.cursor = tools[toggleTool].cursor;
-			addElement.setAttribute("tool-active", "true");
-			Zotero_Browser.tabbrowser.selectedBrowser.addEventListener(tools[toggleTool].event, tools[toggleTool].callback, true);
-		}
-	}
-	
-	/*
-	 * expands all annotations
-	 */
-	function toggleCollapsed() {
-		var tab = _getTabObject(Zotero_Browser.tabbrowser.selectedBrowser);
-		tab.getPageObject().annotations.toggleCollapsed();
+		this.initialized = true;
+		this.chromeLoad();
 	}
 	
 	/*
@@ -260,30 +120,6 @@ var Zotero_Browser = new function() {
 				//Zotero.debug("pagehide");
 				Zotero_Browser.contentHide(e);
 			}, true);
-		
-		this.tabbrowser.addEventListener("resize",
-			function(e) { Zotero_Browser.resize(e) }, false);
-		// Resize on text zoom changes
-		
-		// Fx2
-		var reduce = document.getElementById('cmd_textZoomReduce');
-		if (reduce) {
-			var enlarge = document.getElementById('cmd_textZoomEnlarge');
-			var reset = document.getElementById('cmd_textZoomReset');
-		}
-		// Fx3
-		else {
-			var reduce = document.getElementById('cmd_fullZoomReduce');
-			var enlarge = document.getElementById('cmd_fullZoomEnlarge');
-			var reset = document.getElementById('cmd_fullZoomReset');
-		}
-		
-		if(reduce) reduce.addEventListener("command",
-			function(e) { Zotero_Browser.resize(e) }, false);
-		if(enlarge) enlarge.addEventListener("command",
-			function(e) { Zotero_Browser.resize(e) }, false);
-		if(reset) reset.addEventListener("command",
-			function(e) { Zotero_Browser.resize(e) }, false);
 	}
 	
 	
@@ -328,28 +164,6 @@ var Zotero_Browser = new function() {
 		
 		// get data object
 		var tab = _getTabObject(browser);
-		
-		if(isHTML && !Zotero.isConnector) {
-			var annotationID = Zotero.Annotate.getAnnotationIDFromURL(browser.currentURI.spec);
-			if(annotationID) {
-				if(Zotero.Annotate.isAnnotated(annotationID)) {
-					//window.alert(Zotero.getString("annotations.oneWindowWarning"));
-				} else {
-					var page = tab.getPageObject();
-					if(!page.annotations) {
-						// enable annotation
-						page.annotations = new Zotero.Annotations(Zotero_Browser, browser, annotationID);
-						var saveAnnotations = function() {
-							page.annotations.save();
-							page.annotations = undefined;
-						};
-						browser.contentWindow.addEventListener('beforeunload', saveAnnotations, false);
-						browser.contentWindow.addEventListener('close', saveAnnotations, false);
-						page.annotations.load();
-					}
-				}
-			}
-		}
 		
 		// detect translators
 		tab.detectTranslators(rootDoc, doc);
@@ -413,168 +227,21 @@ var Zotero_Browser = new function() {
 	 * called when a tab is closed
 	 */
 	function tabClose(event) {
-		// Save annotations when closing a tab, since the browser is already
-		// gone from tabbrowser by the time contentHide() gets called
 		var tab = _getTabObject(event.target);
 		var page = tab.getPageObject();
-		if(page && page.annotations) page.annotations.save();
 		tab.clear();
-		
-		// To execute if document object does not exist
-		toggleMode();
 	}
 	
 	
 	/*
-	 * called when the window is resized
-	 */
-	function resize(event) {
-		var tab = _getTabObject(this.tabbrowser.selectedBrowser);
-		var page = tab.getPageObject();
-		if(!page.annotations) return;
-		
-		page.annotations.refresh();
-	}
-	
-	/*
-	 * Updates the status of the capture icon to reflect the scrapability or lack
-	 * thereof of the current page
+	 * Notifies Dontprint to update the Dontprint icon in the url bar.
+	 * Set Zotero_Browser.updateStatusCallback to a function that should
+	 * be called if the state of the Dontprint icon changes.
+	 * TODO: might be obsolete
 	 */
 	function updateStatus() {
-		if (!Zotero_Browser.tabbrowser) return;
-		var tab = _getTabObject(Zotero_Browser.tabbrowser.selectedBrowser);
-		
-		Components.utils.import("resource:///modules/CustomizableUI.jsm");
-		var buttons = getSaveButtons();
-		if (buttons.length) {
-			let state = tab.getCaptureState();
-			let tooltiptext = tab.getCaptureTooltip();
-			for (let { button, placement } of buttons) {
-				let inToolbar = placement.area == CustomizableUI.AREA_NAVBAR;
-				button.image = tab.getCaptureIcon(Zotero.hiDPI || !inToolbar);
-				button.tooltipText = tooltiptext;
-				if (state == tab.CAPTURE_STATE_TRANSLATABLE) {
-					button.classList.add('translate');
-				}
-				else {
-					button.classList.remove('translate');
-				}
-				button.removeAttribute('disabled');
-			}
-		}
-		
-		// set annotation bar status
-		var page = tab.getPageObject();
-		if(page.annotations && page.annotations.annotations.length) {
-			document.getElementById('zotero-annotate-tb').hidden = false;
-			toggleMode();
-		} else {
-			document.getElementById('zotero-annotate-tb').hidden = true;
-		}
-	}
-	
-	function getSaveButtons() {
-		Components.utils.import("resource:///modules/CustomizableUI.jsm");
-		var buttons = [];
-		
-		var placement = CustomizableUI.getPlacementOfWidget("zotero-toolbar-buttons");
-		if (placement) {
-			let button = document.getElementById("zotero-toolbar-save-button");
-			if (button) {
-				buttons.push({
-					button: button,
-					placement: placement
-				});
-			}
-		}
-		
-		placement = CustomizableUI.getPlacementOfWidget("zotero-toolbar-save-button-single");
-		if (placement) {
-			let button = document.getElementById("zotero-toolbar-save-button-single");
-			if (button) {
-				buttons.push({
-					button: button,
-					placement: placement
-				});
-			}
-		}
-		
-		return buttons;
-	}
-	
-	/**
-	 * Called when status bar icon is right-clicked
-	 */
-	this.onStatusPopupShowing = function(e) {
-		var popup = e.target;
-		while(popup.hasChildNodes()) popup.removeChild(popup.lastChild);
-		
-		var tab = _getTabObject(this.tabbrowser.selectedBrowser);
-		var captureState = tab.getCaptureState();
-		if (captureState == tab.CAPTURE_STATE_TRANSLATABLE) {
-			let translators = tab.getPageObject().translators;
-			for (var i=0, n = translators.length; i < n; i++) {
-				let translator = translators[i];
-				
-				let menuitem = document.createElement("menuitem");
-				menuitem.setAttribute("label",
-					Zotero.getString("ingester.saveToZoteroUsing", translator.label));
-				menuitem.setAttribute("image", (translator.itemType === "multiple"
-					? "chrome://zotero/skin/treesource-collection.png"
-					: Zotero.ItemTypes.getImageSrc(translator.itemType)));
-				menuitem.setAttribute("class", "menuitem-iconic");
-				menuitem.addEventListener("command", function(e) {
-					Zotero_Browser.scrapeThisPage(translator, e);
-					e.stopPropagation();
-				}, false);
-				popup.appendChild(menuitem);
-			}
-		}
-		
-		let webPageIcon = tab.getWebPageCaptureIcon(Zotero.hiDPI);
-		let menuitem = document.createElement("menuitem");
-		menuitem.setAttribute("label", Zotero.getString('ingester.saveToZoteroAsWebPageWithSnapshot'));
-		menuitem.setAttribute("image", webPageIcon);
-		menuitem.setAttribute("class", "menuitem-iconic");
-		menuitem.addEventListener("command", function (event) {
-			Zotero_Browser.saveAsWebPage(true);
-			event.stopPropagation();
-		});
-		popup.appendChild(menuitem);
-		
-		menuitem = document.createElement("menuitem");
-		menuitem.setAttribute("label", Zotero.getString('ingester.saveToZoteroAsWebPageWithoutSnapshot'));
-		menuitem.setAttribute("image", webPageIcon);
-		menuitem.setAttribute("class", "menuitem-iconic");
-		menuitem.addEventListener("command", function (event) {
-			Zotero_Browser.saveAsWebPage(false);
-			event.stopPropagation();
-		});
-		popup.appendChild(menuitem);
-		
-		if (captureState == tab.CAPTURE_STATE_TRANSLATABLE) {
-			popup.appendChild(document.createElement("menuseparator"));
-			
-			let menuitem = document.createElement("menuitem");
-			menuitem.setAttribute("label", Zotero.getString("locate.libraryLookup.label"));
-			menuitem.setAttribute("tooltiptext", Zotero.getString("locate.libraryLookup.tooltip"));
-			menuitem.setAttribute("image", "chrome://zotero/skin/locate-library-lookup.png");
-			menuitem.setAttribute("class", "menuitem-iconic");
-			menuitem.addEventListener("command", _constructLookupFunction(tab, function(event, obj) {
-				var urls = [];
-				for (let i = 0; i < obj.newItems.length; i++) {
-					var url = Zotero.OpenURL.resolve(obj.newItems[i]);
-					if(url) urls.push(url);
-				}
-				ZoteroPane.loadURI(urls, event);
-			}), false);
-			popup.appendChild(menuitem);		
-			
-			var locateEngines = Zotero.LocateManager.getVisibleEngines();
-			Zotero_LocateMenu.addLocateEngines(popup, locateEngines,
-				_constructLookupFunction(tab, function(e, obj) {
-				Zotero_LocateMenu.locateItem(e, obj.newItems);
-			}), true);
+		if (this.updateStatusCallback) {
+			this.updateStatusCallback();
 		}
 	}
 	
@@ -714,29 +381,6 @@ var Zotero_Browser = new function() {
 	//
 	//////////////////////////////////////////////////////////////////////////////
 	
-	function _constructLookupFunction(tab, success) {
-		return function(e) {
-			var page = tab.getPageObject();
-			page.translate.setTranslator(page.translators[0]);
-			page.translate.clearHandlers("done");
-			page.translate.clearHandlers("itemDone");
-			page.translate.setHandler("done", function(obj, status) {
-				if(status) {
-					success(e, obj);
-					Zotero_Browser.progress.close();
-				} else {
-					Zotero_Browser.progress.changeHeadline(Zotero.getString("ingester.lookup.error"));
-					Zotero_Browser.progress.startCloseTimer(8000);
-				}
-			});
-			
-			Zotero_Browser.progress.show();
-			Zotero_Browser.progress.changeHeadline(Zotero.getString("ingester.lookup.performing"));
-			page.translate.translate(false);
-			e.stopPropagation();
-		}
-	}
-	
 	/*
 	 * Gets a data object given a browser window object
 	 */
@@ -749,44 +393,7 @@ var Zotero_Browser = new function() {
 		}
 		return obj;
 	}
-	
-	/**
-	 * Adds an annotation
-	 */
-	 function _add(type, e) {
-		var tab = _getTabObject(Zotero_Browser.tabbrowser.selectedBrowser);
-		
-		if(type == "annotation") {
-			// ignore click if it's on an existing annotation
-			if(e.target.getAttribute("zotero-annotation")) return;
-			
-			var annotation = tab.getPageObject().annotations.createAnnotation();
-			annotation.initWithEvent(e);
-			
-			// disable add mode, now that we've used it
-			toggleMode();
-		} else {
-			try {
-				var selection = Zotero_Browser.tabbrowser.selectedBrowser.contentWindow.getSelection();
-			} catch(err) {
-				return;
-			}
-			if(selection.isCollapsed) return;
-			
-			if(type == "highlight") {
-				tab.getPageObject().annotations.highlight(selection.getRangeAt(0));
-			} else if(type == "unhighlight") {
-				tab.getPageObject().annotations.unhighlight(selection.getRangeAt(0));
-			}
-			
-			selection.removeAllRanges();
-		}
-		
-		// stop propagation
-		e.stopPropagation();
-		e.preventDefault();
-	 }
-}
+};
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -798,7 +405,7 @@ var Zotero_Browser = new function() {
 Zotero_Browser.Tab = function(browser) {
 	this.browser = browser;
 	this.wm = new WeakMap();
-}
+};
 
 Zotero_Browser.Tab.prototype.CAPTURE_STATE_DISABLED = 0;
 Zotero_Browser.Tab.prototype.CAPTURE_STATE_GENERIC = 1;
@@ -817,14 +424,14 @@ Zotero_Browser.Tab.prototype.getPageObject = function() {
 		this.wm.set(doc, obj);
 	}
 	return obj;
-}
+};
 
 /*
  * Removes page-specific information from WeakMap
  */
 Zotero_Browser.Tab.prototype.clear = function() {
 	this.wm.delete(this.browser.contentWindow);
-}
+};
 
 /*
  * detects translators for this browser object
@@ -843,64 +450,8 @@ Zotero_Browser.Tab.prototype.detectTranslators = function(rootDoc, doc) {
 		translate.setHandler("translators", function(obj, item) { me._translatorsAvailable(obj, item) });
 		translate.setHandler("pageModified", function(translate, doc) { Zotero_Browser.itemUpdated(doc) });
 		translate.getTranslators(true);
-	} else if(doc.documentURI.substr(0, 7) == "file://") {
-		this._attemptLocalFileImport(doc);
 	}
-}
-
-
-/*
- * searches for a document in all of the frames of a given document
- */
-Zotero_Browser.Tab.prototype._searchFrames = function(rootDoc, searchDoc) {
-	if(rootDoc == searchDoc) return true;
-	var frames = rootDoc.getElementsByTagName("frame");
-	for (let i = 0; i < frames.length; i++) {
-		let frame = frames[i];
-		if(frame.contentDocument &&
-				(frame.contentDocument == searchDoc ||
-				this._searchFrames(frame.contentDocument, searchDoc))) {
-			return true;
-		}
-	}
-	
-	var frames = rootDoc.getElementsByTagName("iframe");
-	for (let i = 0; i < frames.length; i++) {
-		let frame = frames[i];
-		if(frame.contentDocument &&
-				(frame.contentDocument == searchDoc ||
-				this._searchFrames(frame.contentDocument, searchDoc))) {
-			return true;
-		}
-	}
-	
-	return false;
-}
-
-/*
- * Attempts import of a file; to be run on local files only
- */
-Zotero_Browser.Tab.prototype._attemptLocalFileImport = function(doc) {
-	if(doc.documentURI.match(/\.csl(\.xml|\.txt)?$/i)) {
-		// read CSL string
-		var csl = Zotero.File.getContentsFromURL(doc.documentURI);
-		if(csl.indexOf("http://purl.org/net/xbiblio/csl") != -1) {
-			// looks like a CSL; try to import
-			Zotero.Styles.install(csl, doc.documentURI);
-		}
-	} else {
-		// see if we can import this file
-		var file = Components.classes["@mozilla.org/network/protocol;1?name=file"]
-									.getService(Components.interfaces.nsIFileProtocolHandler)
-									.getFileFromURLSpec(doc.documentURI);
-		
-		var me = this;
-		var translate = new Zotero.Translate.Import();
-		translate.setLocation(file);
-		translate.setHandler("translators", function(obj, item) { me._translatorsAvailable(obj, item) });
-		translate.getTranslators();
-	}
-}
+};
 
 
 Zotero_Browser.Tab.prototype.getCaptureState = function () {
@@ -912,7 +463,7 @@ Zotero_Browser.Tab.prototype.getCaptureState = function () {
 		return this.CAPTURE_STATE_TRANSLATABLE;
 	}
 	return this.CAPTURE_STATE_GENERIC;
-}
+};
 
 /*
  * returns the URL of the image representing the translator to be called on the
@@ -931,13 +482,13 @@ Zotero_Browser.Tab.prototype.getCaptureIcon = function (hiDPI) {
 	default:
 		return this.getWebPageCaptureIcon(hiDPI);
 	}
-}
+};
 
 // TODO: Show icons for images, PDFs, etc.?
 Zotero_Browser.Tab.prototype.getWebPageCaptureIcon = function (hiDPI) {
 	var suffix = hiDPI ? "@2x" : "";
 	return "chrome://zotero/skin/treeitem-webpage" + suffix + ".png";
-}
+};
 
 Zotero_Browser.Tab.prototype.getCaptureTooltip = function() {
 	switch (this.getCaptureState()) {
@@ -970,7 +521,7 @@ Zotero_Browser.Tab.prototype.getCaptureTooltip = function() {
 	}
 	
 	return text;
-}
+};
 
 Zotero_Browser.Tab.prototype.getCaptureCommand = function () {
 	switch (this.getCaptureState()) {
@@ -981,26 +532,10 @@ Zotero_Browser.Tab.prototype.getCaptureCommand = function () {
 	default:
 		return 'cmd_zotero_newItemFromCurrentPage';
 	}
-}
+};
 
 
 /**********CALLBACKS**********/
-
-/*
- * called when a user is supposed to select items
- */
-Zotero_Browser.Tab.prototype._selectItems = function(obj, itemList, callback) {
-	// this is kinda ugly, mozillazine made me do it! honest!
-	var io = { dataIn:itemList, dataOut:null }
-	var newDialog = window.openDialog("chrome://zotero/content/ingester/selectitems.xul",
-		"_blank","chrome,modal,centerscreen,resizable=yes", io);
-	
-	if(!io.dataOut) {	// user selected no items, so close the progress indicatior
-		Zotero_Browser.progress.close();
-	}
-	
-	callback(io.dataOut);
-}
 
 /*
  * called when translators are available
@@ -1042,17 +577,11 @@ Zotero_Browser.Tab.prototype._translatorsAvailable = function(translate, transla
 		page.translate = translate;
 		page.translators = translators;
 		page.document = translate.document;
-	
-		translate.clearHandlers("select");
-		translate.setHandler("select", this._selectItems);
-	} else if(translate.type != "import" && translate.document.documentURI.length > 7
-			&& translate.document.documentURI.substr(0, 7) == "file://") {
-		this._attemptLocalFileImport(translate.document);
 	}
 	
 	if(!translators || !translators.length) Zotero.debug("Translate: No translators found");
 	
 	Zotero_Browser.updateStatus();
-}
+};
 
 Zotero_Browser.init();

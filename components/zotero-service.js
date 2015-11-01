@@ -220,12 +220,12 @@ function makeZoteroContext(isConnector) {
 	var subscriptLoader = Cc["@mozilla.org/moz/jssubscript-loader;1"].getService(Ci.mozIJSSubScriptLoader);
 	
 	// Load zotero.js first
-	subscriptLoader.loadSubScript("chrome://zotero/content/xpcom/" + xpcomFilesAll[0] + ".js", zContext);
+	subscriptLoader.loadSubScript("chrome://dontprint/content/xpcom-zotero/" + xpcomFilesAll[0] + ".js", zContext);
 	
 	// Load CiteProc into Zotero.CiteProc namespace
 	zContext.Zotero.CiteProc = {"Zotero":zContext.Zotero};
-	subscriptLoader.loadSubScript("chrome://zotero/content/xpcom/citeproc-prereqs.js", zContext.Zotero.CiteProc);
-	subscriptLoader.loadSubScript("chrome://zotero/content/xpcom/citeproc.js", zContext.Zotero.CiteProc);
+	subscriptLoader.loadSubScript("chrome://dontprint/content/xpcom-zotero/citeproc-prereqs.js", zContext.Zotero.CiteProc);
+	subscriptLoader.loadSubScript("chrome://dontprint/content/xpcom-zotero/citeproc.js", zContext.Zotero.CiteProc);
 	
 	// Load XRegExp object into Zotero.XRegExp
 	const xregexpFiles = [
@@ -246,13 +246,13 @@ function makeZoteroContext(isConnector) {
 		'addons/unicode/unicode-zotero'				//adds support for some Unicode categories used in Zotero
 	];
 	for (var i=0; i<xregexpFiles.length; i++) {
-		subscriptLoader.loadSubScript("chrome://zotero/content/xpcom/xregexp/" + xregexpFiles[i] + ".js", zContext);
+		subscriptLoader.loadSubScript("chrome://dontprint/content/xpcom-zotero/xregexp/" + xregexpFiles[i] + ".js", zContext);
 	}
 	
 	// Load remaining xpcomFiles
 	for (var i=1; i<xpcomFilesAll.length; i++) {
 		try {
-			subscriptLoader.loadSubScript("chrome://zotero/content/xpcom/" + xpcomFilesAll[i] + ".js", zContext);
+			subscriptLoader.loadSubScript("chrome://dontprint/content/xpcom-zotero/" + xpcomFilesAll[i] + ".js", zContext);
 		}
 		catch (e) {
 			Components.utils.reportError("Error loading " + xpcomFilesAll[i] + ".js", zContext);
@@ -263,7 +263,7 @@ function makeZoteroContext(isConnector) {
 	// Load xpcomFiles for specific mode
 	for each(var xpcomFile in (isConnector ? xpcomFilesConnector : xpcomFilesLocal)) {
 		try {
-			subscriptLoader.loadSubScript("chrome://zotero/content/xpcom/" + xpcomFile + ".js", zContext);
+			subscriptLoader.loadSubScript("chrome://dontprint/content/xpcom-zotero/" + xpcomFile + ".js", zContext);
 		}
 		catch (e) {
 			Components.utils.reportError("Error loading " + xpcomFile + ".js", zContext);
@@ -284,12 +284,12 @@ function makeZoteroContext(isConnector) {
 	];
 	zContext.Zotero.RDF = {Zotero:zContext.Zotero};
 	for (var i=0; i<rdfXpcomFiles.length; i++) {
-		subscriptLoader.loadSubScript("chrome://zotero/content/xpcom/" + rdfXpcomFiles[i] + ".js", zContext.Zotero.RDF);
+		subscriptLoader.loadSubScript("chrome://dontprint/content/xpcom-zotero/" + rdfXpcomFiles[i] + ".js", zContext.Zotero.RDF);
 	}
 	
 	if(isStandalone()) {
 		// If isStandalone, load standalone.js
-		subscriptLoader.loadSubScript("chrome://zotero/content/xpcom/standalone.js", zContext);
+		subscriptLoader.loadSubScript("chrome://dontprint/content/xpcom-zotero/standalone.js", zContext);
 	}
 	
 	// load nsTransferable (query: do we still use this?)
@@ -339,9 +339,9 @@ function ZoteroService() {
 }
 
 ZoteroService.prototype = {
-	contractID: '@zotero.org/Zotero;1',
-	classDescription: 'Zotero',
-	classID: Components.ID('{e4c61080-ec2d-11da-8ad9-0800200c9a66}'),
+	contractID: '@robamler.github.com/minimal-zotero;1',
+	classDescription: 'Minimal subset of Zotero to do translation',
+	classID: Components.ID('{4194dd40-1202-4b34-8873-5afcadd700e7}'),
 	QueryInterface: XPCOMUtils.generateQI([Components.interfaces.nsISupports,
 			Components.interfaces.nsIProtocolHandler])
 }
@@ -475,7 +475,7 @@ ZoteroCommandLineHandler.prototype.__defineGetter__("Zotero", function() {
 * XPCOMUtils.generateNSGetModule is for Mozilla 1.9.2 (Firefox 3.6).
 */
 if (XPCOMUtils.generateNSGetFactory) {
-	var NSGetFactory = XPCOMUtils.generateNSGetFactory([ZoteroService, ZoteroCommandLineHandler]);
+	var NSGetFactory = XPCOMUtils.generateNSGetFactory([ZoteroService]);
 } else {
-	var NSGetModule = XPCOMUtils.generateNSGetModule([ZoteroService, ZoteroCommandLineHandler]);
+	var NSGetModule = XPCOMUtils.generateNSGetModule([ZoteroService]);
 }
