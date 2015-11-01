@@ -142,12 +142,14 @@ Zotero.Translate.Sandbox = {
 			// Fire itemSaving event
 			translate._runHandler("itemSaving", item);
 			
-			if(translate instanceof Zotero.Translate.Web) {
-				// For web translators, we queue saves
-				translate.saveQueue.push(item);
-			} else {
-				// Save items
-				translate._saveItems([item]);
+			if(!Zotero.isConnector) { // For Dontprint: only execute following code in Firefox
+				if(translate instanceof Zotero.Translate.Web) {
+					// For web translators, we queue saves
+					translate.saveQueue.push(item);
+				} else {
+					// Save items
+					translate._saveItems([item]);
+				}
 			}
 		},
 		
